@@ -99,7 +99,7 @@ export function TaskCard({
             )}
         >
             {/* Layer 1: Glance (always visible) */}
-            <TaskCardGlance task={task} isExpanded={false} />
+            <TaskCardGlance task={task} isExpanded={false} isHovered={isHovered} />
 
             {/* Hover Actions (desktop only) */}
             {!isMobile && (

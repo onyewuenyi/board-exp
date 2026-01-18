@@ -433,7 +433,7 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
                     >
                         {/* Simplified card for drag overlay - just shows glance layer */}
                         <Card className="bg-card border border-border rounded-lg overflow-hidden">
-                            <TaskCardGlance task={activeTask} isExpanded={false} />
+                            <TaskCardGlance task={activeTask} isExpanded={false} isHovered={false} />
                         </Card>
                     </motion.div>
                 )}

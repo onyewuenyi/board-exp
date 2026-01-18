@@ -9,9 +9,15 @@ import { cn } from "@/lib/utils";
 interface TaskCardGlanceProps {
     task: Task;
     isExpanded: boolean;
+    isHovered: boolean;
 }
 
-export function TaskCardGlance({ task, isExpanded }: TaskCardGlanceProps) {
+export function TaskCardGlance({ task, isExpanded, isHovered }: TaskCardGlanceProps) {
+    // Failure cost color based on priority
+    const failureColor = task.priority === "urgent" || task.priority === "high"
+        ? "text-red-400"
+        : "text-amber-400/90";
+
     return (
         <div className="flex items-start gap-3 p-3.5 relative">
             {/* Owner Avatar - Large (32px) */}
@@ -34,8 +40,10 @@ export function TaskCardGlance({ task, isExpanded }: TaskCardGlanceProps) {
             <div className="flex-1 min-w-0 pr-6">
                 <span
                     className={cn(
-                        "text-[15px] font-medium leading-snug block",
-                        task.status === "done" && "line-through text-muted-foreground"
+                        "text-[15px] font-medium leading-snug block transition-colors duration-200",
+                        task.status === "done"
+                            ? "line-through text-muted-foreground/60"
+                            : isHovered ? "text-foreground" : "text-foreground/90"
                     )}
                 >
                     {task.title}
@@ -43,14 +51,21 @@ export function TaskCardGlance({ task, isExpanded }: TaskCardGlanceProps) {
 
                 {/* Failure Cost - Only if exists */}
                 {task.failureCost && (
-                    <span className="text-xs text-red-400/80 mt-1 block leading-tight font-medium">
+                    <span className={cn(
+                        "text-[11px] mt-1 block leading-tight font-medium transition-opacity duration-300",
+                        failureColor,
+                        !isHovered && "opacity-80"
+                    )}>
                         {task.failureCost}
                     </span>
                 )}
             </div>
 
-            {/* Task ID - Faint and subtle */}
-            <span className="absolute top-3.5 right-3.5 text-[10px] font-mono text-muted-foreground/20 select-none">
+            {/* Task ID - Faint and subtle, lights up on hover */}
+            <span className={cn(
+                "absolute top-3.5 right-3.5 text-[10px] font-mono transition-all duration-300 select-none",
+                isHovered ? "text-muted-foreground/60 scale-105" : "text-muted-foreground/20"
+            )}>
                 #{task.id.split('-').pop() || task.id}
             </span>
         </div>

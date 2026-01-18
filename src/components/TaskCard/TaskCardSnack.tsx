@@ -52,8 +52,9 @@ export function TaskCardSnack({ task, visible }: TaskCardSnackProps) {
             transition={{ duration: 0.15, ease: "easeOut" }}
             className={cn(
                 "absolute bottom-0 left-0 right-0",
-                "px-3.5 py-1.5 flex items-center gap-3",
-                "bg-card/95 backdrop-blur-sm border-t border-border/30 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]",
+                "px-3.5 py-2 flex items-center gap-3",
+                "bg-card/98 backdrop-blur-md border-t border-border/60",
+                "shadow-[0_-8px_20px_rgba(0,0,0,0.12)]",
                 "z-10",
                 !visible && "pointer-events-none"
             )}
