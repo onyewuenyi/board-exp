@@ -8,6 +8,18 @@ export interface User {
   avatar?: string; // URL
 }
 
+export interface TaskLink {
+  id: string;
+  url: string;
+  title?: string;
+}
+
+export interface Subtask {
+  id: string;
+  title: string;
+  completed: boolean;
+}
+
 export interface Task {
   id: string; // e.g. AMA-123
   title: string;
@@ -28,6 +40,12 @@ export interface Task {
   // Metadata
   tags?: string[];
   project?: string;
+
+  // Progressive disclosure fields
+  failureCost?: string; // "Dinner will be late → bedtime meltdown"
+  timeEstimate?: number; // Estimated minutes
+  links?: TaskLink[];
+  subtasks?: Subtask[];
 }
 
 export interface ColumnType {

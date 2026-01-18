@@ -1,10 +1,13 @@
 "use client";
 
-import React from "react";
+import React, { useCallback } from "react";
 import { useBoard } from "@/components/Board/BoardProvider";
 import { Column } from "@/components/Column/Column";
 import { SearchFilterBar } from "@/components/Board/SearchFilterBar";
 import { Confetti } from "@/components/Board/Confetti";
+import { AddTaskFAB } from "@/components/AddTask";
+import { TaskEditDrawer, TaskFormData } from "@/components/TaskDrawer";
+import { useEditingTask } from "@/stores/boardStore";
 import { cn } from "@/lib/utils";
 import { Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,17 +19,72 @@ export function Board() {
         showConfetti,
         confettiPosition,
         handleAddTask,
-        handleUpdatePriority,
-        handleUpdateStatus,
-        handleAddDependency,
-        openTaskDetail,
+        handleUpdateTask,
+        handleDeleteTask,
         dismissConfetti,
         isLoading,
         error,
         refreshTasks,
+        uniqueAssignees,
+        uniqueTags,
+        filters,
+        resetFilters,
     } = useBoard();
 
-    const allTaskOptions = tasks.map(t => ({ id: t.id, title: t.title }));
+    // Editing task state from store
+    const { editingTask, editingTaskId, closeTaskEditor } = useEditingTask();
+
+    // Check if any filters are active
+    const hasActiveFilters =
+        filters.searchText.length > 0 ||
+        filters.priorities.length > 0 ||
+        filters.assignees.length > 0 ||
+        filters.taskTypes.length > 0 ||
+        filters.tags.length > 0;
+
+    // Wrapper to convert TaskFormData to handleAddTask format
+    const handleQuickAdd = useCallback(async (data: TaskFormData) => {
+        await handleAddTask(data.title, data.status || "todo", {
+            assignee: data.assignee,
+            taskType: data.taskType,
+            priority: data.priority,
+            dueDate: data.dueDate,
+            description: data.description,
+            failureCost: data.failureCost,
+            subtasks: data.subtasks,
+            blocking: data.blocking,
+            blockedBy: data.blockedBy,
+        });
+    }, [handleAddTask]);
+
+    // Handler for saving edits from the drawer
+    const handleSaveEdit = useCallback(async (data: TaskFormData) => {
+        if (!editingTaskId) return;
+
+        // Update the task with the new data
+        handleUpdateTask(editingTaskId, {
+            title: data.title,
+            description: data.description || undefined,
+            priority: data.priority,
+            status: data.status,
+            taskType: data.taskType,
+            assignee: data.assignee || undefined,
+            failureCost: data.failureCost || undefined,
+            subtasks: data.subtasks as any, // Store expects Subtask[] with IDs, but handleUpdateTask might merge
+            blocking: data.blocking,
+            blockedBy: data.blockedBy,
+        });
+
+        closeTaskEditor();
+    }, [editingTaskId, handleUpdateTask, closeTaskEditor]);
+
+    // Handler for deleting task from the drawer
+    const handleDeleteFromDrawer = useCallback(() => {
+        if (editingTaskId) {
+            handleDeleteTask(editingTaskId);
+            closeTaskEditor();
+        }
+    }, [editingTaskId, handleDeleteTask, closeTaskEditor]);
 
     // Loading state
     if (isLoading) {
@@ -85,18 +143,38 @@ export function Board() {
                             key={col.id}
                             column={col}
                             onAddTask={handleAddTask}
-                            onUpdatePriority={handleUpdatePriority}
-                            onUpdateStatus={handleUpdateStatus}
-                            onAddDependency={handleAddDependency}
-                            onTaskClick={openTaskDetail}
-                            allTasks={allTaskOptions}
+                            allTasks={tasks}
+                            availableAssignees={uniqueAssignees}
+                            availableTags={uniqueTags}
+                            hasFilters={hasActiveFilters}
+                            onClearFilters={resetFilters}
                         />
                     ))}
                 </div>
             </div>
+
+            {/* Floating Action Button for adding tasks */}
+            <AddTaskFAB
+                onAdd={handleQuickAdd}
+                availableUsers={uniqueAssignees}
+                availableTasks={tasks}
+            />
+
+            {/* Task Edit Drawer */}
+            <TaskEditDrawer
+                mode="edit"
+                task={editingTask || undefined}
+                open={editingTaskId !== null}
+                onOpenChange={(open) => !open && closeTaskEditor()}
+                onSave={handleSaveEdit}
+                onDelete={handleDeleteFromDrawer}
+                availableUsers={uniqueAssignees}
+                availableTasks={tasks}
+            />
 
             {/* Confetti celebration - originates from drop position */}
             <Confetti show={showConfetti} onComplete={dismissConfetti} position={confettiPosition} />
         </>
     );
 }
+

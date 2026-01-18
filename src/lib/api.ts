@@ -14,6 +14,18 @@ interface ApiUser {
   updated_at: string;
 }
 
+interface ApiSubtaskInTask {
+  id: number;
+  title: string;
+  completed: boolean;
+}
+
+interface ApiLinkInTask {
+  id: number;
+  url: string;
+  title: string | null;
+}
+
 interface ApiTask {
   id: number;
   title: string;
@@ -29,6 +41,8 @@ interface ApiTask {
   assignee: ApiUser | null;
   blocking: number[];
   blocked_by: number[];
+  subtasks: ApiSubtaskInTask[];
+  links: ApiLinkInTask[];
 }
 
 interface ApiDependency {
@@ -63,6 +77,16 @@ function apiTaskToTask(apiTask: ApiTask): Task {
     blocking: apiTask.blocking.map(String),
     blockedBy: apiTask.blocked_by.map(String),
     tags: apiTask.tags || undefined,
+    subtasks: apiTask.subtasks?.map(st => ({
+      id: String(st.id),
+      title: st.title,
+      completed: st.completed,
+    })) || [],
+    links: apiTask.links?.map(l => ({
+      id: String(l.id),
+      url: l.url,
+      title: l.title || undefined,
+    })) || [],
   };
 }
 
@@ -214,6 +238,120 @@ export async function deleteDependency(dependencyId: number): Promise<void> {
 export async function fetchDependenciesForTask(taskId: string): Promise<ApiDependency[]> {
   const response = await fetch(`${API_BASE}/dependencies/task/${taskId}`);
   return handleResponse<ApiDependency[]>(response);
+}
+
+// ============================================================================
+// SUBTASK API
+// ============================================================================
+interface ApiSubtask {
+  id: number;
+  task_id: number;
+  title: string;
+  completed: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SubtaskData {
+  id: string;
+  title: string;
+  completed: boolean;
+}
+
+function apiSubtaskToSubtask(apiSubtask: ApiSubtask): SubtaskData {
+  return {
+    id: String(apiSubtask.id),
+    title: apiSubtask.title,
+    completed: apiSubtask.completed,
+  };
+}
+
+export async function fetchSubtasksForTask(taskId: string): Promise<SubtaskData[]> {
+  const response = await fetch(`${API_BASE}/tasks/${taskId}/subtasks`);
+  const apiSubtasks = await handleResponse<ApiSubtask[]>(response);
+  return apiSubtasks.map(apiSubtaskToSubtask);
+}
+
+export async function createSubtask(taskId: string, title: string): Promise<SubtaskData> {
+  const response = await fetch(`${API_BASE}/tasks/${taskId}/subtasks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  const apiSubtask = await handleResponse<ApiSubtask>(response);
+  return apiSubtaskToSubtask(apiSubtask);
+}
+
+export async function updateSubtask(
+  subtaskId: string,
+  update: { title?: string; completed?: boolean }
+): Promise<SubtaskData> {
+  const response = await fetch(`${API_BASE}/subtasks/${subtaskId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(update),
+  });
+  const apiSubtask = await handleResponse<ApiSubtask>(response);
+  return apiSubtaskToSubtask(apiSubtask);
+}
+
+export async function deleteSubtask(subtaskId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/subtasks/${subtaskId}`, {
+    method: "DELETE",
+  });
+  await handleResponse<void>(response);
+}
+
+// ============================================================================
+// TASK LINK API
+// ============================================================================
+interface ApiTaskLink {
+  id: number;
+  task_id: number;
+  url: string;
+  title: string | null;
+  created_at: string;
+}
+
+export interface TaskLinkData {
+  id: string;
+  url: string;
+  title?: string;
+}
+
+function apiLinkToLink(apiLink: ApiTaskLink): TaskLinkData {
+  return {
+    id: String(apiLink.id),
+    url: apiLink.url,
+    title: apiLink.title || undefined,
+  };
+}
+
+export async function fetchLinksForTask(taskId: string): Promise<TaskLinkData[]> {
+  const response = await fetch(`${API_BASE}/tasks/${taskId}/links`);
+  const apiLinks = await handleResponse<ApiTaskLink[]>(response);
+  return apiLinks.map(apiLinkToLink);
+}
+
+export async function createLink(
+  taskId: string,
+  url: string,
+  title?: string
+): Promise<TaskLinkData> {
+  const response = await fetch(`${API_BASE}/tasks/${taskId}/links`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, title }),
+  });
+  const apiLink = await handleResponse<ApiTaskLink>(response);
+  return apiLinkToLink(apiLink);
+}
+
+export async function deleteLink(linkId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/links/${linkId}`, {
+    method: "DELETE",
+  });
+  await handleResponse<void>(response);
 }
 
 // ============================================================================

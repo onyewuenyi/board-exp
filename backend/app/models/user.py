@@ -4,11 +4,16 @@ from pydantic import BaseModel, EmailStr
 
 
 class UserBase(BaseModel):
-    """Base user fields shared across models."""
+    """
+    Base user fields shared across models.
+    Refers to 'ParentUser' in product terminology.
+    """
 
     name: str
     email: EmailStr
     avatar: str | None = None
+    google_id: str | None = None
+    family_id: int | None = None
 
 
 class UserCreate(UserBase):
@@ -23,6 +28,7 @@ class UserUpdate(BaseModel):
     name: str | None = None
     email: EmailStr | None = None
     avatar: str | None = None
+    family_id: int | None = None
 
 
 class UserResponse(UserBase):

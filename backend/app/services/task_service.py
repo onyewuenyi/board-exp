@@ -1,11 +1,23 @@
 from datetime import datetime, timezone
 
 from app import database as db
-from app.models.task import TaskCreate, TaskFilterParams, TaskResponse, TaskUpdate
+from app.models.task import (
+    LinkInTask,
+    SubtaskInTask,
+    TaskCreate,
+    TaskFilterParams,
+    TaskResponse,
+    TaskUpdate,
+)
 from app.models.user import UserResponse
 
 
-def _record_to_task(record, assignee: UserResponse | None = None) -> TaskResponse:
+def _record_to_task(
+    record,
+    assignee: UserResponse | None = None,
+    subtasks: list[SubtaskInTask] | None = None,
+    links: list[LinkInTask] | None = None,
+) -> TaskResponse:
     """Convert a database record to a TaskResponse."""
     return TaskResponse(
         id=record["id"],
@@ -22,6 +34,8 @@ def _record_to_task(record, assignee: UserResponse | None = None) -> TaskRespons
         assignee=assignee,
         blocking=[],
         blocked_by=[],
+        subtasks=subtasks or [],
+        links=links or [],
     )
 
 
@@ -42,6 +56,24 @@ async def _get_task_dependencies(task_id: int) -> tuple[list[int], list[int]]:
     blocked_by = [row["depends_on_task_id"] for row in blocked_by_rows]
 
     return blocking, blocked_by
+
+
+async def _get_task_subtasks(task_id: int) -> list[SubtaskInTask]:
+    """Get subtasks for a task."""
+    rows = await db.fetch_all(
+        "SELECT id, title, completed FROM subtasks WHERE task_id = $1 ORDER BY created_at ASC",
+        task_id,
+    )
+    return [SubtaskInTask(id=row["id"], title=row["title"], completed=row["completed"]) for row in rows]
+
+
+async def _get_task_links(task_id: int) -> list[LinkInTask]:
+    """Get links for a task."""
+    rows = await db.fetch_all(
+        "SELECT id, url, title FROM task_links WHERE task_id = $1 ORDER BY created_at ASC",
+        task_id,
+    )
+    return [LinkInTask(id=row["id"], url=row["url"], title=row["title"]) for row in rows]
 
 
 async def _get_assignee(user_id: int | None) -> UserResponse | None:
@@ -119,7 +151,9 @@ async def get_tasks(filters: TaskFilterParams) -> list[TaskResponse]:
     tasks = []
     for row in rows:
         assignee = await _get_assignee(row["assigned_user_id"])
-        task = _record_to_task(row, assignee)
+        subtasks = await _get_task_subtasks(row["id"])
+        links = await _get_task_links(row["id"])
+        task = _record_to_task(row, assignee, subtasks, links)
         blocking, blocked_by = await _get_task_dependencies(row["id"])
         task.blocking = blocking
         task.blocked_by = blocked_by
@@ -129,13 +163,15 @@ async def get_tasks(filters: TaskFilterParams) -> list[TaskResponse]:
 
 
 async def get_task_by_id(task_id: int) -> TaskResponse | None:
-    """Get a task by ID with dependencies."""
+    """Get a task by ID with dependencies, subtasks, and links."""
     row = await db.fetch_one("SELECT * FROM tasks WHERE id = $1", task_id)
     if row is None:
         return None
 
     assignee = await _get_assignee(row["assigned_user_id"])
-    task = _record_to_task(row, assignee)
+    subtasks = await _get_task_subtasks(task_id)
+    links = await _get_task_links(task_id)
+    task = _record_to_task(row, assignee, subtasks, links)
     blocking, blocked_by = await _get_task_dependencies(task_id)
     task.blocking = blocking
     task.blocked_by = blocked_by

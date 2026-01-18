@@ -15,7 +15,9 @@ import {
     SignalMedium,
     SignalLow,
     Circle,
+    LogOut,
 } from "lucide-react";
+import { signOut } from "next-auth/react";
 import { Priority, TaskType } from "@/types";
 
 // ============================================================================
@@ -57,7 +59,7 @@ function ActiveFilterBadge({
     return (
         <span
             className={cn(
-                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium",
+                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium",
                 colorClass
             )}
         >
@@ -297,12 +299,23 @@ export function SearchFilterBar() {
                         <X className="w-4 h-4" />
                     </Button>
                 )}
+
+                {/* Sign Out Button */}
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => signOut({ callbackUrl: "/" })}
+                    className="ml-auto h-8 gap-2 text-muted-foreground hover:text-foreground"
+                >
+                    <LogOut className="w-4 h-4" />
+                    <span className="hidden sm:inline">Sign Out</span>
+                </Button>
             </div>
 
             {/* Active filter badges */}
             {activeFilters.length > 0 && (
                 <div className="flex items-center gap-2 px-6 pb-3 flex-wrap">
-                    <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wider mr-1">
+                    <span className="text-xs text-muted-foreground/50 uppercase tracking-wider mr-1">
                         Active:
                     </span>
                     {activeFilters.map((filter) => (
@@ -316,7 +329,7 @@ export function SearchFilterBar() {
                     ))}
                     <button
                         onClick={resetFilters}
-                        className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground ml-2 transition-colors"
+                        className="text-xs text-muted-foreground/50 hover:text-muted-foreground ml-2 transition-colors"
                     >
                         clear all
                     </button>

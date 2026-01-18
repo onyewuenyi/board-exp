@@ -10,6 +10,22 @@ Status = Literal["todo", "in-progress", "done"]
 TaskType = Literal["chore", "errand", "homework", "appointment", "other"]
 
 
+class SubtaskInTask(BaseModel):
+    """Subtask embedded in task response."""
+
+    id: int
+    title: str
+    completed: bool
+
+
+class LinkInTask(BaseModel):
+    """Link embedded in task response."""
+
+    id: int
+    url: str
+    title: str | None = None
+
+
 class TaskBase(BaseModel):
     """Base task fields shared across models."""
 
@@ -51,6 +67,8 @@ class TaskResponse(TaskBase):
     assignee: UserResponse | None = None
     blocking: list[int] = []  # Task IDs this task blocks
     blocked_by: list[int] = []  # Task IDs blocking this task
+    subtasks: list[SubtaskInTask] = []
+    links: list[LinkInTask] = []
 
     class Config:
         from_attributes = True
