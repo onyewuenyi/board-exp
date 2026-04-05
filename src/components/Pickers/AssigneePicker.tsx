@@ -17,14 +17,24 @@ import { User } from "@/types";
 import { User as UserIcon, ChevronDown, Check } from "lucide-react";
 
 interface AssigneePickerProps {
-    value: User | null;
-    onChange: (user: User | null) => void;
+    value: User[];
+    onChange: (users: User[]) => void;
     users: User[];
     compact?: boolean;
 }
 
 export function AssigneePicker({ value, onChange, users, compact = false }: AssigneePickerProps) {
     const [open, setOpen] = React.useState(false);
+
+    const selectedIds = new Set(value.map(u => u.id));
+
+    const toggleUser = (user: User) => {
+        if (selectedIds.has(user.id)) {
+            onChange(value.filter(u => u.id !== user.id));
+        } else {
+            onChange([...value, user]);
+        }
+    };
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
@@ -36,20 +46,35 @@ export function AssigneePicker({ value, onChange, users, compact = false }: Assi
                     className={cn(
                         "h-7 gap-1.5 text-xs font-medium",
                         "hover:bg-muted",
-                        !value && "text-muted-foreground"
+                        value.length === 0 && "text-muted-foreground"
                     )}
                 >
-                    {value ? (
-                        <Avatar className="w-4 h-4">
-                            <AvatarImage src={value.avatar} />
-                            <AvatarFallback className="text-[8px] bg-accent">
-                                {value.name[0]}
-                            </AvatarFallback>
-                        </Avatar>
+                    {value.length > 0 ? (
+                        <div className="flex -space-x-1.5">
+                            {value.slice(0, 3).map(u => (
+                                <Avatar key={u.id} className="w-4 h-4 ring-1 ring-background">
+                                    <AvatarImage src={u.avatar} />
+                                    <AvatarFallback className="text-[7px] bg-accent">
+                                        {u.name[0]}
+                                    </AvatarFallback>
+                                </Avatar>
+                            ))}
+                            {value.length > 3 && (
+                                <span className="text-[8px] text-muted-foreground ml-1">+{value.length - 3}</span>
+                            )}
+                        </div>
                     ) : (
                         <UserIcon className="w-3.5 h-3.5" />
                     )}
-                    {!compact && <span>{value?.name || "Assignee"}</span>}
+                    {!compact && (
+                        <span>
+                            {value.length === 0
+                                ? "Assignees"
+                                : value.length === 1
+                                    ? value[0].name
+                                    : `${value.length} people`}
+                        </span>
+                    )}
                     <ChevronDown className="w-3 h-3 opacity-60" />
                 </Button>
             </PopoverTrigger>
@@ -61,31 +86,24 @@ export function AssigneePicker({ value, onChange, users, compact = false }: Assi
                             No people found.
                         </CommandEmpty>
                         <CommandGroup>
-                            {/* Unassigned option */}
-                            <CommandItem
-                                onSelect={() => {
-                                    onChange(null);
-                                    setOpen(false);
-                                }}
-                                className="gap-2 text-xs"
-                            >
-                                <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center">
-                                    <UserIcon className="w-3 h-3 text-muted-foreground" />
-                                </div>
-                                <span>Unassigned</span>
-                                {value === null && (
-                                    <Check className="w-3 h-3 ml-auto text-accent-linear" />
-                                )}
-                            </CommandItem>
+                            {/* Clear all option */}
+                            {value.length > 0 && (
+                                <CommandItem
+                                    onSelect={() => onChange([])}
+                                    className="gap-2 text-xs"
+                                >
+                                    <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center">
+                                        <UserIcon className="w-3 h-3 text-muted-foreground" />
+                                    </div>
+                                    <span>Unassigned</span>
+                                </CommandItem>
+                            )}
 
                             {/* User list */}
                             {users.map((user) => (
                                 <CommandItem
                                     key={user.id}
-                                    onSelect={() => {
-                                        onChange(user);
-                                        setOpen(false);
-                                    }}
+                                    onSelect={() => toggleUser(user)}
                                     className="gap-2 text-xs"
                                 >
                                     <Avatar className="w-5 h-5">
@@ -95,7 +113,7 @@ export function AssigneePicker({ value, onChange, users, compact = false }: Assi
                                         </AvatarFallback>
                                     </Avatar>
                                     <span>{user.name}</span>
-                                    {value?.id === user.id && (
+                                    {selectedIds.has(user.id) && (
                                         <Check className="w-3 h-3 ml-auto text-accent-linear" />
                                     )}
                                 </CommandItem>

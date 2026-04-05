@@ -175,9 +175,133 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(
-    ellipse 100% 40% at 50% 0%,
-    oklch(0.15 0.02 280 / 0.2) 0%,
-    transparent 70%
-  );
+  background:
+    radial-gradient(
+      ellipse 120% 50% at 50% 0%,
+      oklch(0.15 0.02 280 / 0.25) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 80% 40% at 0% 50%,
+      oklch(0.12 0.015 260 / 0.08) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse 80% 40% at 100% 50%,
+      oklch(0.12 0.015 260 / 0.08) 0%,
+      transparent 50%
+    );
+}
+
+/* ============================================================================
+   COLUMN SCROLL FADE EDGES - Gradient masks for scroll overflow
+   ============================================================================ */
+.column-scroll-container {
+  position: relative;
+}
+
+.column-scroll-container::before,
+.column-scroll-container::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 24px;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.column-scroll-container::before {
+  top: 0;
+  background: linear-gradient(to bottom, var(--background), transparent);
+}
+
+.column-scroll-container::after {
+  bottom: 0;
+  background: linear-gradient(to top, var(--background), transparent);
+}
+
+.column-scroll-container[data-scroll-top="true"]::before {
+  opacity: 1;
+}
+
+.column-scroll-container[data-scroll-bottom="true"]::after {
+  opacity: 1;
+}
+
+/* ============================================================================
+   OVERDUE / DUE SOON CARD INDICATORS
+   ============================================================================ */
+.task-overdue {
+  border-color: oklch(0.6 0.18 25 / 0.2) !important;
+}
+
+.task-overdue:hover {
+  box-shadow: 0 0 12px 2px oklch(0.6 0.18 25 / 0.1), 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.task-due-soon {
+  border-color: oklch(0.75 0.15 85 / 0.15) !important;
+}
+
+.task-due-soon:hover {
+  box-shadow: 0 0 10px 2px oklch(0.75 0.15 85 / 0.08), 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* ============================================================================
+   PRIORITY ACCENT BAR - Left edge indicator
+   ============================================================================ */
+.priority-accent {
+  position: relative;
+}
+
+.priority-accent::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  border-radius: 9999px;
+}
+
+.priority-accent-urgent::before {
+  background: var(--priority-urgent);
+}
+.priority-accent-high::before {
+  background: var(--priority-high);
+}
+.priority-accent-med::before {
+  background: var(--priority-med);
+}
+.priority-accent-low::before {
+  background: var(--priority-low);
+}
+
+/* ============================================================================
+   CUSTOM SCROLLBAR - Minimal, design-system matched
+   ============================================================================ */
+.column-scroll-container::-webkit-scrollbar {
+  width: 4px;
+}
+
+.column-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.column-scroll-container::-webkit-scrollbar-thumb {
+  background: oklch(0.25 0.008 260);
+  border-radius: 9999px;
+}
+
+.column-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.35 0.01 260);
+}
+
+/* Firefox */
+.column-scroll-container {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.25 0.008 260) transparent;
 }

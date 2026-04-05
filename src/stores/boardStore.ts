@@ -37,6 +37,7 @@ const defaultFilters: FilterState = {
 interface AddTaskOptions {
     priority?: Priority;
     assignee?: User | null;
+    assignees?: User[];
     taskType?: TaskType;
     tags?: string[];
     dueDate?: Date | null;
@@ -44,7 +45,6 @@ interface AddTaskOptions {
     failureCost?: string;
     subtasks?: { title: string; completed: boolean }[];
     blocking?: string[];
-    blockedBy?: string[];
 }
 
 // Priority weights for sorting
@@ -65,6 +65,14 @@ interface BoardState {
     isLoading: boolean;
     error: string | null;
 
+    // User data
+    users: User[];
+    isUsersLoading: boolean;
+    fetchUsers: () => Promise<void>;
+    addUser: (data: api.CreateUserData) => Promise<void>;
+    updateUser: (userId: string, data: api.UpdateUserData) => Promise<void>;
+    removeUser: (userId: string) => Promise<void>;
+
     // Drag state (rapid updates during drag)
     activeId: UniqueIdentifier | null;
     dragStartStatus: ColumnType["id"] | null;
@@ -76,6 +84,7 @@ interface BoardState {
     showConfetti: boolean;
     confettiPosition: ConfettiPosition | null;
     filters: FilterState;
+    doneColumnCollapsed: boolean;
 
     // Actions - Data
     setTasks: (tasks: Task[]) => void;
@@ -97,6 +106,7 @@ interface BoardState {
     setShowConfetti: (show: boolean) => void;
     setConfettiPosition: (position: ConfettiPosition | null) => void;
     dismissConfetti: () => void;
+    toggleDoneColumnCollapsed: () => void;
 
     // Actions - Filters
     setSearchText: (text: string) => void;
@@ -112,8 +122,12 @@ interface BoardState {
     handleUpdateStatus: (taskId: string, status: ColumnType["id"]) => void;
     handleUpdateTask: (taskId: string, updates: Partial<Task>) => void;
     handleDeleteTask: (taskId: string) => void;
-    handleAddDependency: (taskId: string, dependencyId: string, type: "blocking" | "blockedBy") => void;
-    handleRemoveDependency: (taskId: string, targetId: string, type: "blocking" | "blockedBy") => void;
+    handleDeleteAllTasks: () => Promise<void>;
+    handleAddDependency: (taskId: string, dependencyId: string) => void;
+    handleRemoveDependency: (taskId: string, targetId: string) => void;
+
+    // Actions - Duplicate
+    handleDuplicateTask: (taskId: string) => Promise<void>;
 
     // Actions - Subtasks
     handleAddSubtask: (taskId: string, title: string) => Promise<void>;
@@ -134,6 +148,8 @@ export const useBoardStore = create<BoardState>()(
         tasks: [],
         isLoading: true,
         error: null,
+        users: [],
+        isUsersLoading: false,
         activeId: null,
         dragStartStatus: null,
         isShaking: false,
@@ -142,6 +158,7 @@ export const useBoardStore = create<BoardState>()(
         showConfetti: false,
         confettiPosition: null,
         filters: defaultFilters,
+        doneColumnCollapsed: true,
 
         // ─────────────────────────────────────────────────────────────────────
         // DATA ACTIONS
@@ -159,6 +176,51 @@ export const useBoardStore = create<BoardState>()(
                 const message = err instanceof Error ? err.message : "Failed to fetch tasks";
                 set({ error: message });
                 console.error("Failed to fetch tasks:", err);
+            }
+        },
+
+        fetchUsers: async () => {
+            set({ isUsersLoading: true });
+            try {
+                const users = await api.fetchUsers();
+                set({ users, isUsersLoading: false });
+            } catch (err) {
+                set({ isUsersLoading: false });
+                console.error("Failed to fetch users:", err);
+            }
+        },
+
+        addUser: async (data: api.CreateUserData) => {
+            try {
+                const newUser = await api.createUser(data);
+                set((state) => ({ users: [...state.users, newUser] }));
+                toast.success(`${newUser.name} added`);
+            } catch (err) {
+                toast.error(err instanceof Error ? err.message : "Failed to add member");
+            }
+        },
+
+        updateUser: async (userId: string, data: api.UpdateUserData) => {
+            try {
+                const updated = await api.updateUser(userId, data);
+                set((state) => ({
+                    users: state.users.map((u) => (u.id === userId ? updated : u)),
+                }));
+                toast.success("Profile updated");
+            } catch (err) {
+                toast.error(err instanceof Error ? err.message : "Failed to update member");
+            }
+        },
+
+        removeUser: async (userId: string) => {
+            const prev = useBoardStore.getState().users;
+            set((state) => ({ users: state.users.filter((u) => u.id !== userId) }));
+            try {
+                await api.deleteUser(userId);
+                toast.success("Member removed");
+            } catch (err) {
+                set({ users: prev });
+                toast.error(err instanceof Error ? err.message : "Failed to remove member");
             }
         },
 
@@ -189,6 +251,10 @@ export const useBoardStore = create<BoardState>()(
             showConfetti: false,
             confettiPosition: null
         }),
+
+        toggleDoneColumnCollapsed: () => set((state) => ({
+            doneColumnCollapsed: !state.doneColumnCollapsed,
+        })),
 
         // ─────────────────────────────────────────────────────────────────────
         // FILTER ACTIONS
@@ -241,13 +307,17 @@ export const useBoardStore = create<BoardState>()(
         handleAddTask: async (title, columnId, options) => {
             try {
                 // Create the task
+                const assigneeIds = options?.assignees?.map(u => Number(u.id))
+                    || (options?.assignee ? [Number(options.assignee.id)] : []);
+
                 const newTask = await api.createTask({
                     title,
                     status: columnId,
                     priority: options?.priority || "none",
                     task_type: options?.taskType || "other",
                     tags: options?.tags,
-                    assigned_user_id: options?.assignee ? Number(options.assignee.id) : undefined,
+                    assigned_user_ids: assigneeIds.length > 0 ? assigneeIds : undefined,
+                    assigned_user_id: assigneeIds[0] || undefined,
                     description: options?.description || undefined,
                     due_date: options?.dueDate ? options.dueDate.toISOString().split('T')[0] : undefined,
                 });
@@ -273,17 +343,7 @@ export const useBoardStore = create<BoardState>()(
                     }
                 }
 
-                // Create dependencies if any
-                if (options?.blockedBy && options.blockedBy.length > 0) {
-                    for (const depId of options.blockedBy) {
-                        try {
-                            await api.createDependency(newTask.id, depId);
-                        } catch (err) {
-                            console.error("Failed to create blockedBy dependency:", err);
-                        }
-                    }
-                }
-
+                // Create blocking dependencies if any
                 if (options?.blocking && options.blocking.length > 0) {
                     for (const depId of options.blocking) {
                         try {
@@ -292,10 +352,6 @@ export const useBoardStore = create<BoardState>()(
                             console.error("Failed to create blocking dependency:", err);
                         }
                     }
-                }
-
-                // Refresh to get all dependencies properly
-                if ((options?.blockedBy && options.blockedBy.length > 0) || (options?.blocking && options.blocking.length > 0)) {
                     await get().refreshTasks();
                 }
             } catch (err) {
@@ -339,14 +395,11 @@ export const useBoardStore = create<BoardState>()(
             }
         },
 
-        handleAddDependency: async (taskId, dependencyId, type) => {
+        handleAddDependency: async (taskId, dependencyId) => {
             const { refreshTasks } = get();
             try {
-                if (type === "blockedBy") {
-                    await api.createDependency(taskId, dependencyId);
-                } else {
-                    await api.createDependency(dependencyId, taskId);
-                }
+                // taskId blocks dependencyId
+                await api.createDependency(dependencyId, taskId);
                 await refreshTasks();
             } catch (err) {
                 console.error("Failed to add dependency:", err);
@@ -354,21 +407,13 @@ export const useBoardStore = create<BoardState>()(
             }
         },
 
-        handleRemoveDependency: async (taskId, targetId, type) => {
+        handleRemoveDependency: async (taskId, targetId) => {
             const { refreshTasks } = get();
             try {
                 const deps = await api.fetchDependenciesForTask(taskId);
-
-                let depToDelete;
-                if (type === "blockedBy") {
-                    depToDelete = deps.find(d =>
-                        d.task_id === Number(taskId) && d.depends_on_task_id === Number(targetId)
-                    );
-                } else {
-                    depToDelete = deps.find(d =>
-                        d.task_id === Number(targetId) && d.depends_on_task_id === Number(taskId)
-                    );
-                }
+                const depToDelete = deps.find(d =>
+                    d.task_id === Number(targetId) && d.depends_on_task_id === Number(taskId)
+                );
 
                 if (depToDelete) {
                     await api.deleteDependency(depToDelete.id);
@@ -401,7 +446,9 @@ export const useBoardStore = create<BoardState>()(
                 if (updates.priority !== undefined) apiUpdates.priority = updates.priority;
                 if (updates.taskType !== undefined) apiUpdates.task_type = updates.taskType;
                 if (updates.tags !== undefined) apiUpdates.tags = updates.tags;
-                if (updates.assignee !== undefined) {
+                if (updates.assignees !== undefined) {
+                    apiUpdates.assigned_user_ids = updates.assignees.map(u => Number(u.id));
+                } else if (updates.assignee !== undefined) {
                     apiUpdates.assigned_user_id = updates.assignee ? Number(updates.assignee.id) : null;
                 }
 
@@ -443,6 +490,7 @@ export const useBoardStore = create<BoardState>()(
                                 priority: deletedTask.priority,
                                 task_type: deletedTask.taskType,
                                 tags: deletedTask.tags,
+                                assigned_user_ids: deletedTask.assignees?.map(u => Number(u.id)),
                                 assigned_user_id: deletedTask.assignee ? Number(deletedTask.assignee.id) : undefined,
                             });
                             // Replace temp task with recreated one
@@ -468,6 +516,72 @@ export const useBoardStore = create<BoardState>()(
                 toast.dismiss(toastId);
                 toast.error("Failed to delete task");
                 await refreshTasks();
+            }
+        },
+
+        handleDeleteAllTasks: async () => {
+            const { tasks } = get();
+            const count = tasks.length;
+            if (count === 0) return;
+
+            set({ tasks: [] });
+
+            try {
+                await Promise.all(tasks.map(t => api.deleteTask(t.id)));
+                toast.success(`${count} task${count !== 1 ? "s" : ""} deleted`);
+            } catch (err) {
+                console.error("Failed to delete all tasks:", err);
+                toast.error("Failed to delete some tasks");
+                await get().refreshTasks();
+            }
+        },
+
+        // ─────────────────────────────────────────────────────────────────────
+        // DUPLICATE HANDLER
+        // ─────────────────────────────────────────────────────────────────────
+        handleDuplicateTask: async (taskId) => {
+            const { tasks } = get();
+            const original = tasks.find(t => t.id === taskId);
+            if (!original) return;
+
+            try {
+                const newTask = await api.createTask({
+                    title: original.title,
+                    description: original.description,
+                    status: "todo",
+                    priority: original.priority,
+                    task_type: original.taskType,
+                    tags: original.tags,
+                    assigned_user_ids: original.assignees?.map(u => Number(u.id)),
+                    assigned_user_id: original.assignee ? Number(original.assignee.id) : undefined,
+                });
+
+                set((state) => ({ tasks: [...state.tasks, newTask] }));
+
+                // Recreate subtasks (all uncompleted)
+                if (original.subtasks && original.subtasks.length > 0) {
+                    for (const subtask of original.subtasks) {
+                        try {
+                            const created = await api.createSubtask(newTask.id, subtask.title);
+                            set((state) => ({
+                                tasks: state.tasks.map(t =>
+                                    t.id === newTask.id
+                                        ? { ...t, subtasks: [...(t.subtasks || []), { id: created.id, title: created.title, completed: false }] }
+                                        : t
+                                )
+                            }));
+                        } catch (err) {
+                            console.error("Failed to duplicate subtask:", err);
+                        }
+                    }
+                }
+
+                toast.success("Task duplicated to To Do", {
+                    description: original.title,
+                });
+            } catch (err) {
+                console.error("Failed to duplicate task:", err);
+                toast.error("Failed to duplicate task");
             }
         },
 
@@ -715,11 +829,12 @@ export const useFilteredTasks = () => {
             ) {
                 return false;
             }
-            if (
-                filters.assignees.length > 0 &&
-                (!task.assignee || !filters.assignees.includes(task.assignee.id))
-            ) {
-                return false;
+            if (filters.assignees.length > 0) {
+                const taskAssigneeIds = task.assignees?.map(u => u.id) || [];
+                if (task.assignee) taskAssigneeIds.push(task.assignee.id);
+                if (!taskAssigneeIds.some(id => filters.assignees.includes(id))) {
+                    return false;
+                }
             }
             if (
                 filters.taskTypes.length > 0 &&
@@ -765,15 +880,8 @@ export const useActiveTask = () => {
     });
 };
 
-export const useUniqueAssignees = (): User[] => {
-    const tasks = useBoardStore((state) => state.tasks);
-
-    return useMemo(() => {
-        const map = new Map<string, User>();
-        tasks.forEach((t) => t.assignee && map.set(t.assignee.id, t.assignee));
-        return Array.from(map.values());
-    }, [tasks]);
-};
+export const useUniqueAssignees = (): User[] =>
+    useBoardStore((state) => state.users);
 
 export const useUniqueTags = (): string[] => {
     const tasks = useBoardStore((state) => state.tasks);
@@ -873,6 +981,120 @@ export const useTaskActions = () => {
         handleRemoveSubtask: state.handleRemoveSubtask,
         handleAddLink: state.handleAddLink,
         handleRemoveLink: state.handleRemoveLink,
+        handleDuplicateTask: state.handleDuplicateTask,
+    })));
+};
+
+// Week view selectors
+export interface DayGroup {
+    key: string;
+    label: string;
+    date?: Date;
+    tasks: Task[];
+    isOverdue?: boolean;
+    isToday?: boolean;
+}
+
+export const useThisWeekTasks = (): DayGroup[] => {
+    const { tasks, filters } = useBoardStore(
+        useShallow((state) => ({ tasks: state.tasks, filters: state.filters }))
+    );
+
+    return useMemo(() => {
+        // Apply same filters as the board
+        let filtered = tasks.filter((task) => {
+            if (filters.searchText) {
+                const search = filters.searchText.toLowerCase();
+                if (!task.title.toLowerCase().includes(search) && !task.id.toLowerCase().includes(search)) return false;
+            }
+            if (filters.priorities.length > 0 && !filters.priorities.includes(task.priority)) return false;
+            if (filters.assignees.length > 0) {
+                const taskAssigneeIds = task.assignees?.map(u => u.id) || [];
+                if (!taskAssigneeIds.some(id => filters.assignees.includes(id))) return false;
+            }
+            if (filters.taskTypes.length > 0 && (!task.taskType || !filters.taskTypes.includes(task.taskType))) return false;
+            return true;
+        });
+
+        // Exclude done tasks
+        filtered = filtered.filter(t => t.status !== "done");
+
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const todayEnd = todayStart + 24 * 60 * 60 * 1000 - 1;
+
+        // Get end of week (Sunday)
+        const dayOfWeek = now.getDay();
+        const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+        const weekEnd = todayStart + (daysUntilSunday + 1) * 24 * 60 * 60 * 1000 - 1;
+
+        const overdue: Task[] = [];
+        const byDay: Map<string, Task[]> = new Map();
+        const noDate: Task[] = [];
+
+        for (const task of filtered) {
+            if (!task.dueDate) {
+                noDate.push(task);
+                continue;
+            }
+            if (task.dueDate < todayStart) {
+                overdue.push(task);
+            } else if (task.dueDate <= weekEnd) {
+                const d = new Date(task.dueDate);
+                const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+                if (!byDay.has(key)) byDay.set(key, []);
+                byDay.get(key)!.push(task);
+            } else {
+                // Beyond this week — put in no date for now
+                noDate.push(task);
+            }
+        }
+
+        const groups: DayGroup[] = [];
+
+        if (overdue.length > 0) {
+            groups.push({ key: "overdue", label: "Overdue", tasks: overdue, isOverdue: true });
+        }
+
+        // Build day groups from today through end of week
+        for (let i = 0; i <= daysUntilSunday; i++) {
+            const date = new Date(todayStart + i * 24 * 60 * 60 * 1000);
+            const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+            const dayTasks = byDay.get(key) || [];
+            if (dayTasks.length === 0 && i > 1) continue; // skip empty days beyond tomorrow
+
+            let label: string;
+            if (i === 0) label = "Today";
+            else if (i === 1) label = "Tomorrow";
+            else label = date.toLocaleDateString("en-US", { weekday: "long" });
+
+            groups.push({ key, label, date, tasks: dayTasks, isToday: i === 0 });
+        }
+
+        if (noDate.length > 0) {
+            groups.push({ key: "no-date", label: "No Date", tasks: noDate });
+        }
+
+        return groups;
+    }, [tasks, filters]);
+};
+
+export const useRecentActivity = () => {
+    const tasks = useBoardStore((state) => state.tasks);
+
+    return useMemo(() => {
+        return [...tasks]
+            .filter(t => t.updatedAt)
+            .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+            .slice(0, 15);
+    }, [tasks]);
+};
+
+// Done column collapse selector
+export const useDoneColumnCollapsed = () => {
+    return useBoardStore(useShallow((state) => ({
+        doneColumnCollapsed: state.doneColumnCollapsed,
+        toggleDoneColumnCollapsed: state.toggleDoneColumnCollapsed,
     })));
 };
 

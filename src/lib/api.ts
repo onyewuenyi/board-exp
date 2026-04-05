@@ -8,8 +8,12 @@ const API_BASE = "http://localhost:8001/api";
 interface ApiUser {
   id: number;
   name: string;
-  email: string;
+  email: string | null;
   avatar: string | null;
+  first_name: string | null;
+  middle_name: string | null;
+  last_name: string | null;
+  birthday: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -39,8 +43,8 @@ interface ApiTask {
   created_at: string;
   updated_at: string;
   assignee: ApiUser | null;
+  assignees: ApiUser[];
   blocking: number[];
-  blocked_by: number[];
   subtasks: ApiSubtaskInTask[];
   links: ApiLinkInTask[];
 }
@@ -58,7 +62,11 @@ interface ApiDependency {
 function apiUserToUser(apiUser: ApiUser): User {
   return {
     id: String(apiUser.id),
-    name: apiUser.name,
+    name: apiUser.name || "Unknown",
+    firstName: apiUser.first_name || undefined,
+    middleName: apiUser.middle_name || undefined,
+    lastName: apiUser.last_name || undefined,
+    birthday: apiUser.birthday || undefined,
     avatar: apiUser.avatar || undefined,
   };
 }
@@ -71,11 +79,12 @@ function apiTaskToTask(apiTask: ApiTask): Task {
     priority: apiTask.priority,
     status: apiTask.status,
     assignee: apiTask.assignee ? apiUserToUser(apiTask.assignee) : undefined,
+    assignees: (apiTask.assignees || []).map(apiUserToUser),
     createdAt: new Date(apiTask.created_at).getTime(),
     updatedAt: apiTask.updated_at ? new Date(apiTask.updated_at).getTime() : undefined,
+    dueDate: apiTask.due_date ? new Date(apiTask.due_date).getTime() : undefined,
     taskType: apiTask.task_type,
     blocking: apiTask.blocking.map(String),
-    blockedBy: apiTask.blocked_by.map(String),
     tags: apiTask.tags || undefined,
     subtasks: apiTask.subtasks?.map(st => ({
       id: String(st.id),
@@ -123,7 +132,17 @@ export async function fetchUsers(): Promise<User[]> {
   return apiUsers.map(apiUserToUser);
 }
 
-export async function createUser(data: { name: string; email: string; avatar?: string }): Promise<User> {
+export interface CreateUserData {
+  name?: string;
+  email?: string;
+  avatar?: string;
+  first_name?: string;
+  middle_name?: string;
+  last_name?: string;
+  birthday?: string;
+}
+
+export async function createUser(data: CreateUserData): Promise<User> {
   const response = await fetch(`${API_BASE}/users`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -131,6 +150,32 @@ export async function createUser(data: { name: string; email: string; avatar?: s
   });
   const apiUser = await handleResponse<ApiUser>(response);
   return apiUserToUser(apiUser);
+}
+
+export interface UpdateUserData {
+  name?: string;
+  avatar?: string;
+  first_name?: string;
+  middle_name?: string;
+  last_name?: string;
+  birthday?: string;
+}
+
+export async function updateUser(userId: string, data: UpdateUserData): Promise<User> {
+  const response = await fetch(`${API_BASE}/users/${userId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  const apiUser = await handleResponse<ApiUser>(response);
+  return apiUserToUser(apiUser);
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/users/${userId}`, {
+    method: "DELETE",
+  });
+  await handleResponse<void>(response);
 }
 
 // ============================================================================
@@ -168,6 +213,7 @@ export interface CreateTaskData {
   title: string;
   description?: string;
   assigned_user_id?: number;
+  assigned_user_ids?: number[];
   due_date?: string;
   status?: ColumnType["id"];
   priority?: Priority;
@@ -189,6 +235,7 @@ export interface UpdateTaskData {
   title?: string;
   description?: string;
   assigned_user_id?: number | null;
+  assigned_user_ids?: number[];
   due_date?: string | null;
   status?: ColumnType["id"];
   priority?: Priority;

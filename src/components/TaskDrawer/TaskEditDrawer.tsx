@@ -32,6 +32,7 @@ import { useSmartOwnerDefault } from "@/hooks/useSmartOwnerDefault";
 export interface TaskFormData {
     title: string;
     assignee: User | null;
+    assignees: User[];
     dueDate: Date | null;
     taskType: TaskType;
     priority: Priority;
@@ -40,7 +41,6 @@ export interface TaskFormData {
     failureCost: string;
     subtasks: Omit<Subtask, "id">[];
     blocking: string[];
-    blockedBy: string[];
 }
 
 interface TaskEditDrawerProps {
@@ -139,6 +139,7 @@ export function TaskEditDrawer({
     // Form state
     const [title, setTitle] = useState("");
     const [assignee, setAssignee] = useState<User | null>(null);
+    const [assignees, setAssignees] = useState<User[]>([]);
     const [status, setStatus] = useState<"todo" | "in-progress" | "done">("todo");
     const [dueDate, setDueDate] = useState<Date | null>(null);
     const [taskType, setTaskType] = useState<TaskType>("other");
@@ -148,7 +149,6 @@ export function TaskEditDrawer({
     const [subtasks, setSubtasks] = useState<Omit<Subtask, "id">[]>([]);
     const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
     const [blocking, setBlocking] = useState<string[]>([]);
-    const [blockedBy, setBlockedBy] = useState<string[]>([]);
 
     // UI state
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -162,6 +162,7 @@ export function TaskEditDrawer({
             return {
                 title: task.title,
                 assignee: task.assignee || null,
+                assignees: task.assignees || [],
                 status: task.status,
                 dueDate: null,
                 taskType: task.taskType || "other",
@@ -170,12 +171,12 @@ export function TaskEditDrawer({
                 failureCost: task.failureCost || "",
                 subtasks: task.subtasks?.map(s => ({ title: s.title, completed: s.completed })) || [],
                 blocking: task.blocking || [],
-                blockedBy: task.blockedBy || []
             };
         }
         return {
             title: "",
             assignee: defaultOwner,
+            assignees: defaultOwner ? [defaultOwner] : [],
             status: "todo" as const,
             dueDate: null,
             taskType: "other" as TaskType,
@@ -184,19 +185,23 @@ export function TaskEditDrawer({
             failureCost: "",
             subtasks: [],
             blocking: [],
-            blockedBy: []
         };
     }, [mode, task, defaultOwner, open]);
 
     // Simple dirty check
     const isDirty = title !== initialState.title ||
         assignee?.id !== initialState.assignee?.id ||
+        assignees.length !== initialState.assignees.length ||
+        assignees.some((a, i) => a.id !== initialState.assignees[i]?.id) ||
         status !== initialState.status ||
+        dueDate?.getTime() !== initialState.dueDate?.getTime() ||
         taskType !== initialState.taskType ||
         priority !== initialState.priority ||
         description !== initialState.description ||
         failureCost !== initialState.failureCost ||
-        subtasks.length !== initialState.subtasks.length;
+        subtasks.length !== initialState.subtasks.length ||
+        blocking.length !== initialState.blocking.length ||
+        blocking.some((b, i) => b !== initialState.blocking[i]);
 
     // Reset form when drawer opens/closes or task changes
     useEffect(() => {
@@ -204,6 +209,7 @@ export function TaskEditDrawer({
             const s = initialState;
             setTitle(s.title);
             setAssignee(s.assignee);
+            setAssignees(s.assignees);
             setStatus(s.status);
             setDueDate(s.dueDate);
             setTaskType(s.taskType);
@@ -212,7 +218,6 @@ export function TaskEditDrawer({
             setFailureCost(s.failureCost);
             setSubtasks(s.subtasks);
             setBlocking(s.blocking);
-            setBlockedBy(s.blockedBy);
 
             setShowSuccess(false);
             setShowDeleteConfirm(false);
@@ -252,7 +257,8 @@ export function TaskEditDrawer({
         try {
             await onSave({
                 title: title.trim(),
-                assignee,
+                assignee: assignees.length > 0 ? assignees[0] : assignee,
+                assignees,
                 status,
                 dueDate,
                 taskType,
@@ -261,7 +267,6 @@ export function TaskEditDrawer({
                 failureCost: failureCost.trim(),
                 subtasks,
                 blocking,
-                blockedBy,
             });
 
             if (assignee) {
@@ -316,19 +321,18 @@ export function TaskEditDrawer({
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
+                        transition={{ duration: 0.3 }}
                         className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-40"
                         onClick={() => onOpenChange(false)}
                     />
 
                     <motion.div
-                        initial={{ x: "100%" }}
-                        animate={{ x: 0 }}
-                        exit={{ x: "100%" }}
+                        initial={{ x: "100%", opacity: 0.5 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: "100%", opacity: 0 }}
                         transition={{
-                            type: "spring",
-                            stiffness: 350,
-                            damping: 32,
+                            duration: 0.35,
+                            ease: [0.32, 0.72, 0, 1],
                         }}
                         className="fixed top-0 right-0 h-full w-[440px] max-w-[95vw] bg-card border-l border-border shadow-2xl z-50 flex flex-col"
                     >
@@ -431,8 +435,8 @@ export function TaskEditDrawer({
                                 <div className="px-6 pb-6 mt-2">
                                     <div className="flex flex-wrap gap-2.5">
                                         <AssigneePicker
-                                            value={assignee}
-                                            onChange={setAssignee}
+                                            value={assignees}
+                                            onChange={setAssignees}
                                             users={availableUsers}
                                         />
                                         <DatePicker
@@ -567,21 +571,9 @@ export function TaskEditDrawer({
                                         <div className="space-y-5">
                                             <div>
                                                 <p className="text-[11px] font-bold text-muted-foreground/50 uppercase tracking-tighter mb-2 ml-1">
-                                                    Blocked by
-                                                </p>
-                                                <DependencyPicker
-                                                    type="blockedBy"
-                                                    selectedIds={blockedBy}
-                                                    onChange={setBlockedBy}
-                                                    availableTasks={filteredAvailableTasks}
-                                                />
-                                            </div>
-                                            <div>
-                                                <p className="text-[11px] font-bold text-muted-foreground/50 uppercase tracking-tighter mb-2 ml-1">
                                                     Blocks
                                                 </p>
                                                 <DependencyPicker
-                                                    type="blocking"
                                                     selectedIds={blocking}
                                                     onChange={setBlocking}
                                                     availableTasks={filteredAvailableTasks}

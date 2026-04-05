@@ -27,22 +27,23 @@ async def get_user(user_id: int):
 @router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(user: UserCreate):
     """Create a new user."""
-    # Check for duplicate email
-    existing = await user_service.get_user_by_email(user.email)
-    if existing is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"User with email {user.email} already exists",
-        )
+    # Check for duplicate email if provided
+    if user.email is not None:
+        existing = await user_service.get_user_by_email(user.email)
+        if existing is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"User with email {user.email} already exists",
+            )
     return await user_service.create_user(user)
 
 
 @router.put("/{user_id}", response_model=UserResponse)
 async def update_user(user_id: int, user: UserUpdate):
     """Update a user."""
-    # Check for duplicate email if email is being updated
+    # Check for duplicate email if email is being updated (and not null)
     if user.email is not None:
-        existing = await user_service.get_user_by_email(user.email)
+        existing = await user_service.get_user_by_email(str(user.email))
         if existing is not None and existing.id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

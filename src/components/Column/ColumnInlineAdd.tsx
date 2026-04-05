@@ -32,7 +32,7 @@ export function ColumnInlineAdd({
 }: ColumnInlineAddProps) {
     const [title, setTitle] = useState("");
     const [priority, setPriority] = useState<Priority>("none");
-    const [assignee, setAssignee] = useState<User | null>(null);
+    const [assignees, setAssignees] = useState<User[]>([]);
     const [taskType, setTaskType] = useState<TaskType>("other");
     const [tags, setTags] = useState<string[]>([]);
     const [isExpanded, setIsExpanded] = useState(false);
@@ -52,7 +52,7 @@ export function ColumnInlineAdd({
         try {
             await onAdd(title.trim(), {
                 priority: priority !== "none" ? priority : undefined,
-                assignee,
+                assignee: assignees[0] || null,
                 taskType: taskType !== "other" ? taskType : undefined,
                 tags: tags.length > 0 ? tags : undefined,
             });
@@ -98,8 +98,8 @@ export function ColumnInlineAdd({
             {/* Primary Actions Row */}
             <div className="px-3 pb-2 flex items-center gap-1 flex-wrap">
                 <AssigneePicker
-                    value={assignee}
-                    onChange={setAssignee}
+                    value={assignees}
+                    onChange={setAssignees}
                     users={availableAssignees}
                 />
                 <PriorityPicker value={priority} onChange={setPriority} />

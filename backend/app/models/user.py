@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, EmailStr
 
@@ -9,9 +9,13 @@ class UserBase(BaseModel):
     Refers to 'ParentUser' in product terminology.
     """
 
-    name: str
-    email: EmailStr
+    name: str | None = None
+    email: EmailStr | None = None
     avatar: str | None = None
+    first_name: str | None = None
+    middle_name: str | None = None
+    last_name: str | None = None
+    birthday: date | None = None
     google_id: str | None = None
     family_id: int | None = None
 
@@ -28,6 +32,10 @@ class UserUpdate(BaseModel):
     name: str | None = None
     email: EmailStr | None = None
     avatar: str | None = None
+    first_name: str | None = None
+    middle_name: str | None = None
+    last_name: str | None = None
+    birthday: date | None = None
     family_id: int | None = None
 
 

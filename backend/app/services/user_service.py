@@ -4,13 +4,25 @@ from app import database as db
 from app.models.user import UserCreate, UserResponse, UserUpdate
 
 
+def _compute_display_name(record) -> str:
+    """Compute display name from first/last name or fallback to name field."""
+    first = record.get("first_name") or ""
+    last = record.get("last_name") or ""
+    full = f"{first} {last}".strip()
+    return full or record.get("name") or "Unknown"
+
+
 def _record_to_user(record) -> UserResponse:
     """Convert a database record to a UserResponse."""
     return UserResponse(
         id=record["id"],
-        name=record["name"],
+        name=_compute_display_name(record),
         email=record["email"],
         avatar=record["avatar"],
+        first_name=record.get("first_name"),
+        middle_name=record.get("middle_name"),
+        last_name=record.get("last_name"),
+        birthday=record.get("birthday"),
         created_at=record["created_at"],
         updated_at=record["updated_at"],
     )
@@ -42,22 +54,32 @@ async def get_user_by_email(email: str) -> UserResponse | None:
 
 async def create_user(user: UserCreate) -> UserResponse:
     """Create a new user."""
+    # Compute display name if not provided
+    name = user.name
+    if not name:
+        first = user.first_name or ""
+        last = user.last_name or ""
+        name = f"{first} {last}".strip() or "Unknown"
+
     row = await db.fetch_one(
         """
-        INSERT INTO users (name, email, avatar)
-        VALUES ($1, $2, $3)
+        INSERT INTO users (name, email, avatar, first_name, middle_name, last_name, birthday)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *
         """,
-        user.name,
+        name,
         user.email,
         user.avatar,
+        user.first_name,
+        user.middle_name,
+        user.last_name,
+        user.birthday,
     )
     return _record_to_user(row)
 
 
 async def update_user(user_id: int, user: UserUpdate) -> UserResponse | None:
     """Update an existing user."""
-    # First check if user exists
     existing = await get_user_by_id(user_id)
     if existing is None:
         return None
@@ -67,20 +89,31 @@ async def update_user(user_id: int, user: UserUpdate) -> UserResponse | None:
     values = []
     param_idx = 1
 
-    if user.name is not None:
-        updates.append(f"name = ${param_idx}")
-        values.append(user.name)
-        param_idx += 1
+    field_map = {
+        "name": user.name,
+        "email": user.email,
+        "avatar": user.avatar,
+        "first_name": user.first_name,
+        "middle_name": user.middle_name,
+        "last_name": user.last_name,
+        "birthday": user.birthday,
+    }
 
-    if user.email is not None:
-        updates.append(f"email = ${param_idx}")
-        values.append(user.email)
-        param_idx += 1
+    for field, value in field_map.items():
+        if value is not None:
+            updates.append(f"{field} = ${param_idx}")
+            values.append(value)
+            param_idx += 1
 
-    if user.avatar is not None:
-        updates.append(f"avatar = ${param_idx}")
-        values.append(user.avatar)
-        param_idx += 1
+    # Auto-compute display name if first/last changed
+    if user.first_name is not None or user.last_name is not None:
+        first = user.first_name if user.first_name is not None else (existing.first_name or "")
+        last = user.last_name if user.last_name is not None else (existing.last_name or "")
+        computed_name = f"{first} {last}".strip() or "Unknown"
+        if user.name is None:
+            updates.append(f"name = ${param_idx}")
+            values.append(computed_name)
+            param_idx += 1
 
     if not updates:
         return existing

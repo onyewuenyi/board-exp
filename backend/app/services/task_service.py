@@ -15,6 +15,7 @@ from app.models.user import UserResponse
 def _record_to_task(
     record,
     assignee: UserResponse | None = None,
+    assignees: list[UserResponse] | None = None,
     subtasks: list[SubtaskInTask] | None = None,
     links: list[LinkInTask] | None = None,
 ) -> TaskResponse:
@@ -32,30 +33,20 @@ def _record_to_task(
         created_at=record["created_at"],
         updated_at=record["updated_at"],
         assignee=assignee,
+        assignees=assignees or [],
         blocking=[],
-        blocked_by=[],
         subtasks=subtasks or [],
         links=links or [],
     )
 
 
-async def _get_task_dependencies(task_id: int) -> tuple[list[int], list[int]]:
-    """Get blocking and blocked_by task IDs for a task."""
-    # Tasks that this task blocks (other tasks depend on this one)
+async def _get_task_dependencies(task_id: int) -> list[int]:
+    """Get IDs of tasks that this task blocks."""
     blocking_rows = await db.fetch_all(
         "SELECT task_id FROM dependencies WHERE depends_on_task_id = $1",
         task_id,
     )
-    blocking = [row["task_id"] for row in blocking_rows]
-
-    # Tasks that block this task (this task depends on them)
-    blocked_by_rows = await db.fetch_all(
-        "SELECT depends_on_task_id FROM dependencies WHERE task_id = $1",
-        task_id,
-    )
-    blocked_by = [row["depends_on_task_id"] for row in blocked_by_rows]
-
-    return blocking, blocked_by
+    return [row["task_id"] for row in blocking_rows]
 
 
 async def _get_task_subtasks(task_id: int) -> list[SubtaskInTask]:
@@ -93,6 +84,43 @@ async def _get_assignee(user_id: int | None) -> UserResponse | None:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
+
+
+async def _get_task_assignees(task_id: int) -> list[UserResponse]:
+    """Get all assignees for a task from the join table."""
+    rows = await db.fetch_all(
+        """
+        SELECT u.* FROM users u
+        JOIN task_assignees ta ON u.id = ta.user_id
+        WHERE ta.task_id = $1
+        ORDER BY ta.created_at ASC
+        """,
+        task_id,
+    )
+    return [
+        UserResponse(
+            id=row["id"],
+            name=row["name"],
+            email=row["email"],
+            avatar=row["avatar"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+        for row in rows
+    ]
+
+
+async def _sync_task_assignees(task_id: int, user_ids: list[int]) -> None:
+    """Sync the task_assignees join table for a given task."""
+    # Remove existing
+    await db.execute("DELETE FROM task_assignees WHERE task_id = $1", task_id)
+    # Insert new
+    for user_id in user_ids:
+        await db.execute(
+            "INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            task_id,
+            user_id,
+        )
 
 
 async def get_tasks(filters: TaskFilterParams) -> list[TaskResponse]:
@@ -151,12 +179,11 @@ async def get_tasks(filters: TaskFilterParams) -> list[TaskResponse]:
     tasks = []
     for row in rows:
         assignee = await _get_assignee(row["assigned_user_id"])
+        assignees = await _get_task_assignees(row["id"])
         subtasks = await _get_task_subtasks(row["id"])
         links = await _get_task_links(row["id"])
-        task = _record_to_task(row, assignee, subtasks, links)
-        blocking, blocked_by = await _get_task_dependencies(row["id"])
-        task.blocking = blocking
-        task.blocked_by = blocked_by
+        task = _record_to_task(row, assignee, assignees, subtasks, links)
+        task.blocking = await _get_task_dependencies(row["id"])
         tasks.append(task)
 
     return tasks
@@ -169,19 +196,18 @@ async def get_task_by_id(task_id: int) -> TaskResponse | None:
         return None
 
     assignee = await _get_assignee(row["assigned_user_id"])
+    assignees = await _get_task_assignees(task_id)
     subtasks = await _get_task_subtasks(task_id)
     links = await _get_task_links(task_id)
-    task = _record_to_task(row, assignee, subtasks, links)
-    blocking, blocked_by = await _get_task_dependencies(task_id)
-    task.blocking = blocking
-    task.blocked_by = blocked_by
+    task = _record_to_task(row, assignee, assignees, subtasks, links)
+    task.blocking = await _get_task_dependencies(task_id)
 
     return task
 
 
 async def create_task(task: TaskCreate) -> TaskResponse:
     """Create a new task."""
-    # Validate assigned_user_id if provided
+    # Validate assigned_user_id if provided (backward compat)
     if task.assigned_user_id is not None:
         user = await db.fetch_one(
             "SELECT id FROM users WHERE id = $1",
@@ -207,7 +233,16 @@ async def create_task(task: TaskCreate) -> TaskResponse:
         task.tags,
     )
 
-    return await get_task_by_id(row["id"])
+    task_id = row["id"]
+
+    # Sync assignees to join table
+    user_ids = list(task.assigned_user_ids)
+    if task.assigned_user_id and task.assigned_user_id not in user_ids:
+        user_ids.append(task.assigned_user_id)
+    if user_ids:
+        await _sync_task_assignees(task_id, user_ids)
+
+    return await get_task_by_id(task_id)
 
 
 async def update_task(task_id: int, task: TaskUpdate) -> TaskResponse | None:
@@ -265,6 +300,11 @@ async def update_task(task_id: int, task: TaskUpdate) -> TaskResponse | None:
     """
 
     await db.fetch_one(query, *values)
+
+    # Sync assignees if provided
+    if task.assigned_user_ids is not None:
+        await _sync_task_assignees(task_id, task.assigned_user_ids)
+
     return await get_task_by_id(task_id)
 
 

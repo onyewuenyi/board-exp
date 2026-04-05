@@ -42,7 +42,7 @@ class TaskBase(BaseModel):
 class TaskCreate(TaskBase):
     """Fields required to create a new task."""
 
-    pass
+    assigned_user_ids: list[int] = []
 
 
 class TaskUpdate(BaseModel):
@@ -51,6 +51,7 @@ class TaskUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     assigned_user_id: int | None = None
+    assigned_user_ids: list[int] | None = None
     due_date: date | None = None
     status: Status | None = None
     priority: Priority | None = None
@@ -65,8 +66,8 @@ class TaskResponse(TaskBase):
     created_at: datetime
     updated_at: datetime
     assignee: UserResponse | None = None
+    assignees: list[UserResponse] = []
     blocking: list[int] = []  # Task IDs this task blocks
-    blocked_by: list[int] = []  # Task IDs blocking this task
     subtasks: list[SubtaskInTask] = []
     links: list[LinkInTask] = []
 

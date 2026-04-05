@@ -5,7 +5,11 @@ export type TaskType = "chore" | "errand" | "homework" | "appointment" | "other"
 export interface User {
   id: string;
   name: string;
-  avatar?: string; // URL
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  birthday?: string; // ISO date string
+  avatar?: string; // URL or base64 data URL
 }
 
 export interface TaskLink {
@@ -27,15 +31,16 @@ export interface Task {
   priority: Priority;
   status: "todo" | "in-progress" | "done";
   assignee?: User;
+  assignees: User[];
   createdAt: number;
   updatedAt?: number;
+  dueDate?: number; // timestamp
 
   // Task categorization
   taskType?: TaskType;
 
   // Dependencies
   blocking?: string[]; // IDs of tasks this task blocks
-  blockedBy?: string[]; // IDs of tasks blocking this task
 
   // Metadata
   tags?: string[];

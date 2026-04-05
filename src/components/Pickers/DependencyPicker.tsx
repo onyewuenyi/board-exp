@@ -15,14 +15,12 @@ import { Task } from "@/types";
 import { Link, Plus, X } from "lucide-react";
 
 interface DependencyPickerProps {
-    type: "blocking" | "blockedBy";
     selectedIds: string[];
     onChange: (ids: string[]) => void;
     availableTasks: Task[];
 }
 
 export function DependencyPicker({
-    type,
     selectedIds,
     onChange,
     availableTasks,
@@ -40,8 +38,8 @@ export function DependencyPicker({
         onChange(selectedIds.filter((id) => id !== taskId));
     };
 
-    const label = type === "blocking" ? "Blocks" : "Blocked by";
-    const emptyText = type === "blocking" ? "This task blocks..." : "This task is blocked by...";
+    const label = "Blocks";
+    const emptyText = "This task blocks...";
 
     return (
         <div className="space-y-2">

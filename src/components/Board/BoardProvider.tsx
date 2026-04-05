@@ -58,6 +58,7 @@ const dropAnimation: DropAnimation = {
 interface AddTaskOptions {
     priority?: Priority;
     assignee?: User | null;
+    assignees?: User[];
     taskType?: TaskType;
     tags?: string[];
     dueDate?: Date | null;
@@ -65,7 +66,6 @@ interface AddTaskOptions {
     failureCost?: string;
     subtasks?: { title: string; completed: boolean }[];
     blocking?: string[];
-    blockedBy?: string[];
 }
 
 interface FilterState {
@@ -93,8 +93,8 @@ interface BoardContextType {
     handleUpdateStatus: (taskId: string, status: ColumnType["id"]) => void;
     handleUpdateTask: (taskId: string, updates: Partial<Task>) => void;
     handleDeleteTask: (taskId: string) => void;
-    handleAddDependency: (taskId: string, dependencyId: string, type: "blocking" | "blockedBy") => void;
-    handleRemoveDependency: (taskId: string, targetId: string, type: "blocking" | "blockedBy") => void;
+    handleAddDependency: (taskId: string, dependencyId: string) => void;
+    handleRemoveDependency: (taskId: string, targetId: string) => void;
     dismissConfetti: () => void;
     toggleTaskExpanded: (taskId: string) => void;
     collapseAllTasks: () => void;
@@ -223,18 +223,19 @@ export function BoardProvider({ children }: { children: React.ReactNode }) {
     const { setShowConfetti, setConfettiPosition } = useConfetti();
     const { refreshTasks, setIsLoading } = useLoadingState();
     const setTasks = useBoardStore((state) => state.setTasks);
+    const fetchUsers = useBoardStore((state) => state.fetchUsers);
 
     // ────────────────────────────────────────────────────────────────────────
     // DATA FETCHING ON MOUNT
     // ────────────────────────────────────────────────────────────────────────
     useEffect(() => {
-        const loadTasks = async () => {
+        const loadData = async () => {
             setIsLoading(true);
-            await refreshTasks();
+            await Promise.all([refreshTasks(), fetchUsers()]);
             setIsLoading(false);
         };
-        loadTasks();
-    }, [refreshTasks, setIsLoading]);
+        loadData();
+    }, [refreshTasks, fetchUsers, setIsLoading]);
 
     // ────────────────────────────────────────────────────────────────────────
     // SENSORS

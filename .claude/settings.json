@@ -1,3 +1,18 @@
 {
-  "enabledPlugins": {}
+  "enabledPlugins": {},
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; case \"$f\" in *.ts|*.tsx) bunx eslint --fix \"$f\" ;; esac; } 2>/dev/null || true",
+            "timeout": 30,
+            "statusMessage": "Linting..."
+          }
+        ]
+      }
+    ]
+  }
 }

@@ -1,13 +1,15 @@
 "use client";
 
 import React, { useCallback } from "react";
+import { motion } from "framer-motion";
 import { useBoard } from "@/components/Board/BoardProvider";
 import { Column } from "@/components/Column/Column";
 import { SearchFilterBar } from "@/components/Board/SearchFilterBar";
 import { Confetti } from "@/components/Board/Confetti";
+import { AskAIBar } from "@/components/Board/AskAIBar";
 import { AddTaskFAB } from "@/components/AddTask";
 import { TaskEditDrawer, TaskFormData } from "@/components/TaskDrawer";
-import { useEditingTask } from "@/stores/boardStore";
+import { useBoardStore, useEditingTask, useDoneColumnCollapsed } from "@/stores/boardStore";
 import { cn } from "@/lib/utils";
 import { Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,6 +35,19 @@ export function Board() {
 
     // Editing task state from store
     const { editingTask, editingTaskId, closeTaskEditor } = useEditingTask();
+    const handleDeleteAllTasks = useBoardStore((state) => state.handleDeleteAllTasks);
+    const { doneColumnCollapsed } = useDoneColumnCollapsed();
+
+    // Bulk add handler
+    const handleBulkAdd = useCallback(async (tasks: { title: string; status: "todo" | "in-progress" | "done"; priority: any; taskType: any; assignees: any[] }[]) => {
+        for (const t of tasks) {
+            await handleAddTask(t.title, t.status, {
+                priority: t.priority,
+                taskType: t.taskType,
+                assignees: t.assignees,
+            });
+        }
+    }, [handleAddTask]);
 
     // Check if any filters are active
     const hasActiveFilters =
@@ -46,6 +61,7 @@ export function Board() {
     const handleQuickAdd = useCallback(async (data: TaskFormData) => {
         await handleAddTask(data.title, data.status || "todo", {
             assignee: data.assignee,
+            assignees: data.assignees,
             taskType: data.taskType,
             priority: data.priority,
             dueDate: data.dueDate,
@@ -53,7 +69,6 @@ export function Board() {
             failureCost: data.failureCost,
             subtasks: data.subtasks,
             blocking: data.blocking,
-            blockedBy: data.blockedBy,
         });
     }, [handleAddTask]);
 
@@ -69,10 +84,10 @@ export function Board() {
             status: data.status,
             taskType: data.taskType,
             assignee: data.assignee || undefined,
+            assignees: data.assignees,
             failureCost: data.failureCost || undefined,
-            subtasks: data.subtasks as any, // Store expects Subtask[] with IDs, but handleUpdateTask might merge
+            subtasks: data.subtasks as any,
             blocking: data.blocking,
-            blockedBy: data.blockedBy,
         });
 
         closeTaskEditor();
@@ -86,15 +101,36 @@ export function Board() {
         }
     }, [editingTaskId, handleDeleteTask, closeTaskEditor]);
 
-    // Loading state
+    // Loading state — skeleton
     if (isLoading) {
         return (
             <div className="flex flex-col h-screen w-full bg-background text-foreground board-background">
-                <div className="flex-1 flex items-center justify-center">
-                    <div className="flex flex-col items-center gap-4">
-                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                        <p className="text-muted-foreground">Loading tasks...</p>
+                {/* Nav skeleton */}
+                <div className="h-14 border-b border-white/[0.05] px-10 flex items-center gap-4">
+                    <div className="w-20 h-7 rounded-lg bg-muted/30 animate-pulse" />
+                    <div className="w-52 h-8 rounded-lg bg-muted/20 animate-pulse" />
+                    <div className="ml-auto flex gap-2">
+                        <div className="w-7 h-7 rounded-full bg-muted/20 animate-pulse" />
+                        <div className="w-7 h-7 rounded-full bg-muted/20 animate-pulse" />
                     </div>
+                </div>
+                {/* Columns skeleton */}
+                <div className="flex flex-1 px-10 py-8 gap-8">
+                    {[0, 1, 2].map(i => (
+                        <div key={i} className="flex-1 space-y-3">
+                            <div className="flex items-center gap-2 mb-4 px-1">
+                                <div className="w-2 h-2 rounded-full bg-muted/30 animate-pulse" />
+                                <div className="h-4 w-20 rounded bg-muted/30 animate-pulse" />
+                            </div>
+                            {[0, 1, 2, 3].slice(0, 4 - i).map(j => (
+                                <div
+                                    key={j}
+                                    className="h-[72px] rounded-xl bg-muted/10 animate-pulse"
+                                    style={{ animationDelay: `${(i * 4 + j) * 100}ms` }}
+                                />
+                            ))}
+                        </div>
+                    ))}
                 </div>
             </div>
         );
@@ -128,34 +164,47 @@ export function Board() {
                 {/* Search and Filter Bar */}
                 <SearchFilterBar />
 
+                {/* AI Bar — inline between nav and columns */}
+                <AskAIBar />
+
                 {/* Columns */}
                 <div
                     className={cn(
-                        "flex flex-1 p-4 md:p-8 gap-6 select-none",
-                        // Responsive: stacked on mobile, horizontal on desktop
-                        "flex-col md:flex-row",
-                        "overflow-y-auto md:overflow-x-auto md:overflow-y-hidden",
-                        "items-stretch md:items-start"
+                        "flex flex-1 px-10 pt-4 pb-8 gap-8 select-none",
+                        "flex-row overflow-hidden items-stretch"
                     )}
                 >
                     {columns.map(col => (
-                        <Column
+                        <motion.div
                             key={col.id}
-                            column={col}
-                            onAddTask={handleAddTask}
-                            allTasks={tasks}
-                            availableAssignees={uniqueAssignees}
-                            availableTags={uniqueTags}
-                            hasFilters={hasActiveFilters}
-                            onClearFilters={resetFilters}
-                        />
+                            layout
+                            transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
+                            className={cn(
+                                col.id === "done" && doneColumnCollapsed
+                                    ? "w-14 shrink-0"
+                                    : "flex-1 min-w-0"
+                            )}
+                        >
+                            <Column
+                                column={col}
+                                onAddTask={handleAddTask}
+                                allTasks={tasks}
+                                availableAssignees={uniqueAssignees}
+                                availableTags={uniqueTags}
+                                hasFilters={hasActiveFilters}
+                                onClearFilters={resetFilters}
+                                collapsible={col.id === "done"}
+                            />
+                        </motion.div>
                     ))}
                 </div>
             </div>
 
-            {/* Floating Action Button for adding tasks */}
+            {/* Floating Action Button — single + bulk add */}
             <AddTaskFAB
                 onAdd={handleQuickAdd}
+                onBulkAdd={handleBulkAdd}
+                onDeleteAll={handleDeleteAllTasks}
                 availableUsers={uniqueAssignees}
                 availableTasks={tasks}
             />

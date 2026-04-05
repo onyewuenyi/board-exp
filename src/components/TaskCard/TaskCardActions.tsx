@@ -2,7 +2,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, FileText, ListTodo, GitBranch } from "lucide-react";
+import { AlertTriangle, FileText, ListTodo, GitBranch, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Task } from "@/types";
 
@@ -10,6 +10,7 @@ interface TaskCardActionsProps {
     task: Task;
     visible: boolean;
     onActionClick: (action: "failureCost" | "notes" | "subtasks" | "dependencies") => void;
+    onDuplicate?: () => void;
 }
 
 const ACTIONS = [
@@ -44,40 +45,35 @@ const ACTIONS = [
 ];
 
 /**
- * Hover-reveal action buttons for quick access to secondary input fields.
- * Appears on the right side of the card on hover.
- * Only shows buttons for fields that have data.
+ * Hover-reveal action buttons — floats above the card as a toolbar
+ * so it never overlaps content.
  */
-export function TaskCardActions({ task, visible, onActionClick }: TaskCardActionsProps) {
-    // Check which fields have data
+export function TaskCardActions({ task, visible, onActionClick, onDuplicate }: TaskCardActionsProps) {
     const hasData = {
         failureCost: Boolean(task.failureCost),
         notes: Boolean(task.description),
         subtasks: Boolean(task.subtasks && task.subtasks.length > 0),
-        dependencies: Boolean(
-            (task.blocking && task.blocking.length > 0) ||
-            (task.blockedBy && task.blockedBy.length > 0)
-        ),
+        dependencies: Boolean(task.blocking && task.blocking.length > 0),
     };
 
-    // Filter to only actions with data
     const visibleActions = ACTIONS.filter((action) => hasData[action.id]);
+    const showDuplicate = task.status === "done" && onDuplicate;
 
-    // Don't render anything if no fields have data
-    if (visibleActions.length === 0) {
+    // Don't render if no actions to show
+    if (visibleActions.length === 0 && !showDuplicate) {
         return null;
     }
 
     return (
         <motion.div
-            initial={{ opacity: 0, x: 10 }}
+            initial={{ opacity: 0, y: 4 }}
             animate={{
                 opacity: visible ? 1 : 0,
-                x: visible ? 0 : 10,
+                y: visible ? 0 : 4,
             }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
+            transition={{ duration: 0.12, ease: "easeOut" }}
             className={cn(
-                "absolute right-2 top-1/2 -translate-y-1/2",
+                "absolute -top-4 right-2",
                 "flex items-center gap-0.5",
                 "bg-card/95 backdrop-blur-sm rounded-lg border border-border/50 shadow-lg",
                 "p-0.5",
@@ -107,6 +103,31 @@ export function TaskCardActions({ task, visible, onActionClick }: TaskCardAction
                     </button>
                 );
             })}
+
+            {/* Duplicate button — only for done tasks */}
+            {showDuplicate && (
+                <>
+                    {visibleActions.length > 0 && (
+                        <div className="w-px h-4 bg-border/30 mx-0.5" />
+                    )}
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onDuplicate();
+                        }}
+                        className={cn(
+                            "w-7 h-7 rounded-md flex items-center justify-center",
+                            "transition-colors",
+                            "text-cyan-400",
+                            "hover:text-cyan-300 hover:bg-cyan-400/10"
+                        )}
+                        title="Duplicate to To Do"
+                    >
+                        <Copy className="w-3.5 h-3.5" />
+                    </button>
+                </>
+            )}
         </motion.div>
     );
 }
